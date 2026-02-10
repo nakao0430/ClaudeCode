@@ -3,7 +3,7 @@ import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { RecipeService } from '../../core/services/recipe.service';
-import type { RecipeListResponse } from '../../core/models/recipe.model';
+import type { Recipe, RecipeListResponse } from '../../core/models/recipe.model';
 import { AuthService } from '../../core/services/auth.service';
 
 @Component({
@@ -27,6 +27,9 @@ import { AuthService } from '../../core/services/auth.service';
             <input type="text" placeholder="レシピを検索..." [(ngModel)]="searchQ" (keyup.enter)="load()" />
             <button type="button" (click)="load()" class="btn-search">検索</button>
           </div>
+          <button type="button" (click)="toggleFavoritesFilter()" class="btn-favorites" [class.active]="favoritesOnly()">
+            {{ favoritesOnly() ? '\u2665' : '\u2661' }} お気に入り
+          </button>
           <a routerLink="/recipes/new" class="btn-new">新規登録</a>
         </div>
         @if (loading()) {
@@ -62,6 +65,9 @@ import { AuthService } from '../../core/services/auth.service';
                   </div>
                   <div class="card-footer">
                     <span class="date">{{ r.createdAt | date:'short' }}</span>
+                    <button type="button" (click)="toggleFavorite($event, r)" class="card-favorite" [class.active]="r.isFavorite">
+                      {{ r.isFavorite ? '\u2665' : '\u2661' }}
+                    </button>
                   </div>
                 </div>
               </a>
@@ -171,6 +177,29 @@ import { AuthService } from '../../core/services/auth.service';
         outline: none;
         border-color: #2c3e50;
         box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1);
+      }
+
+      .btn-favorites {
+        padding: 0.625rem 1.25rem;
+        background: white;
+        color: #5d6d7e;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+
+      .btn-favorites:hover {
+        border-color: #e74c3c;
+        color: #e74c3c;
+      }
+
+      .btn-favorites.active {
+        background: #e74c3c;
+        color: white;
+        border-color: #e74c3c;
       }
 
       .btn-search,
@@ -317,11 +346,33 @@ import { AuthService } from '../../core/services/auth.service';
         margin-top: auto;
         padding-top: 0.75rem;
         border-top: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
 
       .date {
         font-size: 0.8125rem;
         color: #9ca3af;
+      }
+
+      .card-favorite {
+        background: none;
+        border: none;
+        font-size: 1.25rem;
+        cursor: pointer;
+        color: #d1d5db;
+        transition: color 0.2s, transform 0.2s;
+        padding: 0.25rem;
+        line-height: 1;
+      }
+
+      .card-favorite:hover {
+        transform: scale(1.2);
+      }
+
+      .card-favorite.active {
+        color: #e74c3c;
       }
 
       .load-more {
@@ -372,6 +423,7 @@ export class RecipeListComponent implements OnInit {
   readonly items = signal<RecipeListResponse['items']>([]);
   readonly nextToken = signal<string | undefined>(undefined);
   readonly loading = signal(false);
+  readonly favoritesOnly = signal(false);
   searchQ = '';
 
   constructor(
@@ -388,7 +440,10 @@ export class RecipeListComponent implements OnInit {
   load(): void {
     this.nextToken.set(undefined);
     this.loading.set(true);
-    this.recipe.list({ q: this.searchQ || undefined }).subscribe((res) => {
+    this.recipe.list({
+      q: this.searchQ || undefined,
+      favoritesOnly: this.favoritesOnly() || undefined,
+    }).subscribe((res) => {
       this.items.set(res.items);
       this.nextToken.set(res.nextToken);
       this.loading.set(false);
@@ -399,10 +454,36 @@ export class RecipeListComponent implements OnInit {
     const token = this.nextToken();
     if (!token) return;
     this.loading.set(true);
-    this.recipe.list({ q: this.searchQ || undefined, nextToken: token }).subscribe((res) => {
+    this.recipe.list({
+      q: this.searchQ || undefined,
+      nextToken: token,
+      favoritesOnly: this.favoritesOnly() || undefined,
+    }).subscribe((res) => {
       this.items.update((prev) => [...prev, ...res.items]);
       this.nextToken.set(res.nextToken);
       this.loading.set(false);
+    });
+  }
+
+  toggleFavoritesFilter(): void {
+    this.favoritesOnly.update((v) => !v);
+    this.load();
+  }
+
+  toggleFavorite(event: Event, recipe: Recipe): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const newValue = !recipe.isFavorite;
+    this.recipe.setFavorite(recipe.recipeId, newValue).subscribe({
+      next: (updated) => {
+        this.items.update((items) =>
+          items.map((item) => (item.recipeId === updated.recipeId ? updated : item))
+        );
+      },
+      error: (error) => {
+        console.error('Error toggling favorite:', error);
+      },
     });
   }
 

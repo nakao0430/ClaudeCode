@@ -21,6 +21,7 @@ export interface Recipe {
   cookingTime?: number;
   servings?: number;
   imageUrl?: string;
+  isFavorite?: boolean;
   createdAt: string;
   updatedAt: string;
 }

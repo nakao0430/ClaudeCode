@@ -119,9 +119,10 @@ export async function listByUserId(
     q?: string;
     limit?: number;
     nextToken?: string;
+    favoritesOnly?: boolean;
   } = {}
 ): Promise<RecipeListResponse> {
-  const { q, limit: rawLimit = 20, nextToken } = options;
+  const { q, limit: rawLimit = 20, nextToken, favoritesOnly } = options;
 
   // Validate and clamp limit
   const limit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 20), LIMITS.MAX_QUERY_LIMIT);
@@ -166,8 +167,14 @@ export async function listByUserId(
           item.title.toLowerCase().includes(searchLower) ||
           item.description.toLowerCase().includes(searchLower) ||
           item.tags.some((tag) => tag.toLowerCase().includes(searchLower)) ||
-          item.categories.some((cat) => cat.toLowerCase().includes(searchLower))
+          item.categories.some((cat) => cat.toLowerCase().includes(searchLower)) ||
+          item.ingredients.some((ing) => ing.name.toLowerCase().includes(searchLower))
       );
+    }
+
+    // Filter favorites only
+    if (favoritesOnly) {
+      items = items.filter((item) => item.isFavorite === true);
     }
 
     const response: RecipeListResponse = {
@@ -325,6 +332,35 @@ export async function update(
   } catch (error) {
     console.error('Error updating recipe:', error);
     throw new AppError(500, 'Failed to update recipe');
+  }
+}
+
+export async function setFavorite(userId: string, recipeId: string, isFavorite: boolean): Promise<Recipe> {
+  // Verify the recipe exists and belongs to the user
+  await getById(userId, recipeId);
+
+  try {
+    const command = new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: {
+        userId,
+        recipeId,
+      },
+      UpdateExpression: 'SET isFavorite = :isFavorite',
+      ExpressionAttributeValues: {
+        ':isFavorite': isFavorite,
+      },
+      ReturnValues: 'ALL_NEW',
+    });
+
+    const result = await docClient.send(command);
+    return result.Attributes as Recipe;
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    console.error('Error setting favorite:', error);
+    throw new AppError(500, 'Failed to update favorite status');
   }
 }
 

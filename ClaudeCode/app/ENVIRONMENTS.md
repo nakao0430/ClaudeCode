@@ -46,6 +46,7 @@
 |------|---------|---------|
 | レシピ一覧 (GET/POST) | recipe-app-dev-recipes | recipe-app-prod-recipes |
 | レシピ詳細 (GET/PUT/DELETE) | recipe-app-dev-recipe | recipe-app-prod-recipe |
+| お気に入り (PUT) | recipe-app-dev-favorite | recipe-app-prod-favorite |
 | 画像アップロード | recipe-app-dev-upload | recipe-app-prod-upload |
 
 ## 開発フロー
@@ -96,6 +97,7 @@ aws s3 cp lambda-prod.zip s3://recipe-app-test-bucket/lambda-prod.zip --region a
 aws lambda update-function-code --function-name recipe-app-prod-recipes --s3-bucket recipe-app-test-bucket --s3-key lambda-prod.zip --region ap-southeast-2
 aws lambda update-function-code --function-name recipe-app-prod-recipe --s3-bucket recipe-app-test-bucket --s3-key lambda-prod.zip --region ap-southeast-2
 aws lambda update-function-code --function-name recipe-app-prod-upload --s3-bucket recipe-app-test-bucket --s3-key lambda-prod.zip --region ap-southeast-2
+aws lambda update-function-code --function-name recipe-app-prod-favorite --s3-bucket recipe-app-test-bucket --s3-key lambda-prod.zip --region ap-southeast-2
 ```
 
 ### フロントエンドのみ更新する場合

@@ -10,6 +10,7 @@ export interface Recipe {
   cookingTime?: number; // 分
   servings?: number; // 人数
   imageUrl?: string;
+  isFavorite?: boolean;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
 }
@@ -34,6 +35,7 @@ export interface RecipeListParams {
   q?: string;
   limit?: number;
   nextToken?: string;
+  favoritesOnly?: boolean;
 }
 
 export interface CreateRecipeRequest {

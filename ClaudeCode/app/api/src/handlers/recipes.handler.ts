@@ -22,11 +22,13 @@ export async function recipesHandler(event: APIGatewayProxyEvent): Promise<APIGa
         ? parseInt(event.queryStringParameters.limit)
         : undefined;
       const nextToken = event.queryStringParameters?.nextToken;
+      const favoritesOnly = event.queryStringParameters?.favorites === 'true';
 
       const result = await recipeService.listByUserId(userId, {
         q,
         limit,
         nextToken,
+        favoritesOnly,
       });
 
       return addCorsHeaders(createSuccessResponse(result), event);

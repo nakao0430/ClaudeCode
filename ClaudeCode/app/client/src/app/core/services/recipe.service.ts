@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../config/environment';
@@ -14,9 +14,8 @@ import type {
   providedIn: 'root',
 })
 export class RecipeService {
+  private readonly http = inject(HttpClient);
   private readonly apiUrl = `${environment.apiUrl}/recipes`;
-
-  constructor(private http: HttpClient) {}
 
   list(params: RecipeListParams = {}): Observable<RecipeListResponse> {
     let httpParams = new HttpParams();
@@ -31,6 +30,10 @@ export class RecipeService {
 
     if (params.nextToken) {
       httpParams = httpParams.set('nextToken', params.nextToken);
+    }
+
+    if (params.favoritesOnly) {
+      httpParams = httpParams.set('favorites', 'true');
     }
 
     return this.http.get<RecipeListResponse>(this.apiUrl, { params: httpParams });
@@ -50,5 +53,9 @@ export class RecipeService {
 
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`);
+  }
+
+  setFavorite(id: string, isFavorite: boolean): Observable<Recipe> {
+    return this.http.put<Recipe>(`${this.apiUrl}/${id}/favorite`, { isFavorite });
   }
 }

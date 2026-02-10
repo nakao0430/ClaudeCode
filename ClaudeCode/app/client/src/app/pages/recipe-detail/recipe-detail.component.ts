@@ -18,7 +18,12 @@ import type { Recipe } from '../../core/models/recipe.model';
       } @else if (recipe()) {
         <div class="detail">
           <div class="header">
-            <h1>{{ recipe()!.title }}</h1>
+            <div class="title-row">
+              <h1>{{ recipe()!.title }}</h1>
+              <button type="button" (click)="toggleFavorite()" class="btn-favorite" [class.active]="recipe()!.isFavorite">
+                {{ recipe()!.isFavorite ? '\u2665' : '\u2661' }}
+              </button>
+            </div>
             @if (canEdit()) {
               <div class="actions">
                 <a [routerLink]="['/recipes', recipe()!.recipeId, 'edit']" class="btn-edit">編集</a>
@@ -130,6 +135,12 @@ import type { Recipe } from '../../core/models/recipe.model';
         border-bottom: 2px solid #e5e7eb;
       }
 
+      .title-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+
       h1 {
         margin: 0;
         color: #2c3e50;
@@ -137,6 +148,26 @@ import type { Recipe } from '../../core/models/recipe.model';
         font-weight: 600;
         letter-spacing: -0.5px;
         line-height: 1.3;
+      }
+
+      .btn-favorite {
+        background: none;
+        border: none;
+        font-size: 1.75rem;
+        cursor: pointer;
+        color: #d1d5db;
+        transition: color 0.2s, transform 0.2s;
+        padding: 0.25rem;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+
+      .btn-favorite:hover {
+        transform: scale(1.15);
+      }
+
+      .btn-favorite.active {
+        color: #e74c3c;
       }
 
       .actions {
@@ -365,6 +396,21 @@ export class RecipeDetailComponent implements OnInit {
         this.errorMessage.set('レシピの読み込みに失敗しました');
         console.error('Error loading recipe:', error);
         this.loading.set(false);
+      },
+    });
+  }
+
+  toggleFavorite(): void {
+    const current = this.recipe();
+    if (!current) return;
+
+    const newValue = !current.isFavorite;
+    this.recipeService.setFavorite(current.recipeId, newValue).subscribe({
+      next: (updated) => {
+        this.recipe.set(updated);
+      },
+      error: (error) => {
+        console.error('Error toggling favorite:', error);
       },
     });
   }
