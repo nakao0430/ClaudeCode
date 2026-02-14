@@ -1,7 +1,7 @@
 export const environment = {
   production: false,
-  apiUrl: 'https://6ktneh4x3h.execute-api.ap-southeast-2.amazonaws.com/dev',
-  cognitoUserPoolId: 'ap-southeast-2_Nfm8IbtBO',
-  cognitoClientId: 'eapprjju8g9rurmc5img8rn66',
-  region: 'ap-southeast-2',
+  apiUrl: 'https://lx0s7yeag6.execute-api.ap-northeast-1.amazonaws.com/dev',
+  cognitoUserPoolId: 'ap-northeast-1_slLgyRwMq',
+  cognitoClientId: 'l73fjf72gcuqln1e747u5lvgo',
+  region: 'ap-northeast-1',
 };

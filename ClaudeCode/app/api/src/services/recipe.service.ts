@@ -2,7 +2,7 @@ import { QueryCommand, GetCommand, PutCommand, UpdateCommand, DeleteCommand } fr
 import { ulid } from 'ulid';
 import { docClient } from '../config/dynamodb.config.js';
 import { AppError } from '../middleware/error-handler.middleware.js';
-import type { Recipe, RecipeListResponse, CreateRecipeRequest, UpdateRecipeRequest } from '../models/recipe.model.js';
+import type { Recipe, RecipeListResponse, CreateRecipeRequest, UpdateRecipeRequest, IngredientGroup, Ingredient } from '../models/recipe.model.js';
 
 const TABLE_NAME = process.env.RECIPES_TABLE || '';
 
@@ -10,12 +10,14 @@ const LIMITS = {
   TITLE_MAX_LENGTH: 200,
   DESCRIPTION_MAX_LENGTH: 5000,
   MAX_INGREDIENTS: 100,
+  MAX_INGREDIENT_GROUPS: 20,
   MAX_STEPS: 50,
   MAX_TAGS: 20,
   MAX_CATEGORIES: 10,
   TAG_MAX_LENGTH: 50,
   INGREDIENT_NAME_MAX_LENGTH: 200,
   INGREDIENT_AMOUNT_MAX_LENGTH: 50,
+  GROUP_LABEL_MAX_LENGTH: 100,
   STEP_DESCRIPTION_MAX_LENGTH: 2000,
   MAX_COOKING_TIME: 10000,
   MAX_SERVINGS: 1000,
@@ -23,13 +25,30 @@ const LIMITS = {
   IMAGE_URL_MAX_LENGTH: 500,
 };
 
+function normalizeIngredientGroups(recipe: any): IngredientGroup[] {
+  if (recipe.ingredientGroups && Array.isArray(recipe.ingredientGroups) && recipe.ingredientGroups.length > 0) {
+    return recipe.ingredientGroups;
+  }
+  if (recipe.ingredients && Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0) {
+    return [{ groupLabel: '', ingredients: recipe.ingredients }];
+  }
+  return [{ groupLabel: '', ingredients: [] }];
+}
+
+function flattenIngredientGroups(groups: IngredientGroup[]): Ingredient[] {
+  return groups.flatMap(g => g.ingredients);
+}
+
 function validateRecipeInput(request: CreateRecipeRequest | UpdateRecipeRequest, isCreate: boolean): void {
   if (isCreate) {
     const req = request as CreateRecipeRequest;
-    if (!req.title || !req.description || !req.ingredients || !req.steps) {
-      throw new AppError(400, 'Title, description, ingredients, and steps are required');
+    if (!req.title || !req.description || !req.steps) {
+      throw new AppError(400, 'Title, description, and steps are required');
     }
-    if (req.ingredients.length === 0) {
+    const hasIngredientGroups = req.ingredientGroups && req.ingredientGroups.length > 0 &&
+      req.ingredientGroups.some(g => g.ingredients.length > 0);
+    const hasIngredients = req.ingredients && req.ingredients.length > 0;
+    if (!hasIngredientGroups && !hasIngredients) {
       throw new AppError(400, 'At least one ingredient is required');
     }
     if (req.steps.length === 0) {
@@ -49,7 +68,34 @@ function validateRecipeInput(request: CreateRecipeRequest | UpdateRecipeRequest,
     }
   }
 
-  if (request.ingredients !== undefined) {
+  if (request.ingredientGroups !== undefined) {
+    if (!Array.isArray(request.ingredientGroups) || request.ingredientGroups.length > LIMITS.MAX_INGREDIENT_GROUPS) {
+      throw new AppError(400, `Ingredient groups must be an array with max ${LIMITS.MAX_INGREDIENT_GROUPS} items`);
+    }
+    let totalIngredients = 0;
+    for (const group of request.ingredientGroups) {
+      if (group.groupLabel && group.groupLabel.length > LIMITS.GROUP_LABEL_MAX_LENGTH) {
+        throw new AppError(400, `Group label must be max ${LIMITS.GROUP_LABEL_MAX_LENGTH} characters`);
+      }
+      if (!Array.isArray(group.ingredients)) {
+        throw new AppError(400, 'Each ingredient group must have an ingredients array');
+      }
+      totalIngredients += group.ingredients.length;
+      for (const ingredient of group.ingredients) {
+        if (!ingredient.name || typeof ingredient.name !== 'string' || ingredient.name.length > LIMITS.INGREDIENT_NAME_MAX_LENGTH) {
+          throw new AppError(400, 'Each ingredient must have a valid name');
+        }
+        if (ingredient.amount && ingredient.amount.length > LIMITS.INGREDIENT_AMOUNT_MAX_LENGTH) {
+          throw new AppError(400, 'Ingredient amount is too long');
+        }
+      }
+    }
+    if (totalIngredients > LIMITS.MAX_INGREDIENTS) {
+      throw new AppError(400, `Total ingredients must be max ${LIMITS.MAX_INGREDIENTS} items`);
+    }
+  }
+
+  if (request.ingredients !== undefined && !request.ingredientGroups) {
     if (!Array.isArray(request.ingredients) || request.ingredients.length > LIMITS.MAX_INGREDIENTS) {
       throw new AppError(400, `Ingredients must be an array with max ${LIMITS.MAX_INGREDIENTS} items`);
     }
@@ -159,6 +205,11 @@ export async function listByUserId(
     const result = await docClient.send(command);
     let items = (result.Items || []) as Recipe[];
 
+    // Normalize ingredientGroups for backward compatibility
+    for (const item of items) {
+      item.ingredientGroups = normalizeIngredientGroups(item);
+    }
+
     // Client-side filtering if search query provided
     if (q) {
       const searchLower = q.toLowerCase();
@@ -168,7 +219,7 @@ export async function listByUserId(
           item.description.toLowerCase().includes(searchLower) ||
           item.tags.some((tag) => tag.toLowerCase().includes(searchLower)) ||
           item.categories.some((cat) => cat.toLowerCase().includes(searchLower)) ||
-          item.ingredients.some((ing) => ing.name.toLowerCase().includes(searchLower))
+          (item.ingredientGroups || []).some((g) => g.ingredients.some((ing) => ing.name.toLowerCase().includes(searchLower)))
       );
     }
 
@@ -208,7 +259,9 @@ export async function getById(userId: string, recipeId: string): Promise<Recipe>
       throw new AppError(404, 'Recipe not found');
     }
 
-    return result.Item as Recipe;
+    const recipe = result.Item as Recipe;
+    recipe.ingredientGroups = normalizeIngredientGroups(recipe);
+    return recipe;
   } catch (error) {
     if (error instanceof AppError) {
       throw error;
@@ -222,18 +275,23 @@ export async function create(userId: string, request: CreateRecipeRequest): Prom
   validateRecipeInput(request, true);
 
   const now = new Date().toISOString();
+  const ingredientGroups = request.ingredientGroups && request.ingredientGroups.length > 0
+    ? request.ingredientGroups
+    : [{ groupLabel: '', ingredients: request.ingredients }];
   const recipe: Recipe = {
     userId,
     recipeId: ulid(),
     title: request.title,
     description: request.description,
-    ingredients: request.ingredients,
+    ingredients: flattenIngredientGroups(ingredientGroups),
+    ingredientGroups,
     steps: request.steps,
     categories: request.categories || [],
     tags: request.tags || [],
     cookingTime: request.cookingTime,
     servings: request.servings,
     imageUrl: request.imageUrl,
+    comment: request.comment,
     createdAt: now,
     updatedAt: now,
   };
@@ -279,9 +337,17 @@ export async function update(
     expressionAttributeValues[':description'] = request.description;
   }
 
-  if (request.ingredients !== undefined) {
+  if (request.ingredientGroups !== undefined) {
+    const groups = request.ingredientGroups;
+    updateExpressions.push('ingredientGroups = :ingredientGroups');
+    expressionAttributeValues[':ingredientGroups'] = groups;
+    updateExpressions.push('ingredients = :ingredients');
+    expressionAttributeValues[':ingredients'] = flattenIngredientGroups(groups);
+  } else if (request.ingredients !== undefined) {
     updateExpressions.push('ingredients = :ingredients');
     expressionAttributeValues[':ingredients'] = request.ingredients;
+    updateExpressions.push('ingredientGroups = :ingredientGroups');
+    expressionAttributeValues[':ingredientGroups'] = [{ groupLabel: '', ingredients: request.ingredients }];
   }
 
   if (request.steps !== undefined) {
@@ -312,6 +378,12 @@ export async function update(
   if (request.imageUrl !== undefined) {
     updateExpressions.push('imageUrl = :imageUrl');
     expressionAttributeValues[':imageUrl'] = request.imageUrl;
+  }
+
+  if (request.comment !== undefined) {
+    updateExpressions.push('#comment = :comment');
+    expressionAttributeValues[':comment'] = request.comment;
+    expressionAttributeNames['#comment'] = 'comment';
   }
 
   try {

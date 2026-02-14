@@ -8,6 +8,7 @@ import type {
   RecipeListParams,
   CreateRecipeRequest,
   UpdateRecipeRequest,
+  ScrapeResponse,
 } from '../models/recipe.model';
 
 @Injectable({
@@ -57,5 +58,9 @@ export class RecipeService {
 
   setFavorite(id: string, isFavorite: boolean): Observable<Recipe> {
     return this.http.put<Recipe>(`${this.apiUrl}/${id}/favorite`, { isFavorite });
+  }
+
+  scrapeFromUrl(url: string): Observable<ScrapeResponse> {
+    return this.http.post<ScrapeResponse>(`${this.apiUrl}/scrape`, { url });
   }
 }
